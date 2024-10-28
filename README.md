@@ -1,7 +1,6 @@
-Overview
 This project enables remote control of multiple servos and electromagnets via a web-based interface hosted on an Arduino R4 WiFi board. Users can access the control panel over WiFi to operate servos connected to pins 9, 10, and 11 and electromagnets connected to pins 13 and 8.
 
-Features
+Features:
 Web-Based Control Panel: Accessible via WiFi, no additional apps required.
 
 Servo Control:
