@@ -10,9 +10,6 @@ WiFiServer server(80);          // Create a server on port 80
 Servo servo9;
 Servo servo10;
 Servo servo11;
-// Pin 13 and pin 8 are used as digital outputs
-// Pin 13 controls Electromagnet 1
-// Pin 8 controls Electromagnet 2
 
 // Current positions of servos
 int pos9 = 90;
@@ -25,8 +22,8 @@ const int CENTER_ANGLE = 90;
 const int MAX_ANGLE = 180;
 
 // States of pin 13 and pin 8
-int pin13State = LOW; // Start with Electromagnet 1 off
-int pin8State = LOW;  // Start with Electromagnet 2 off
+int pin13State = LOW; // Electromagnet 1 (Pin 13)
+int pin8State = LOW;  // Electromagnet 2 (Pin 8)
 
 void setup() {
   // Initialize serial communication
@@ -45,11 +42,10 @@ void setup() {
   servo10.write(pos10);
   servo11.write(pos11);
 
-  // Set up pin 13 as output for Electromagnet 1
+  // Set up pins as outputs for electromagnets
   pinMode(13, OUTPUT);
   digitalWrite(13, pin13State);
 
-  // Set up pin 8 as output for Electromagnet 2
   pinMode(8, OUTPUT);
   digitalWrite(8, pin8State);
 
@@ -59,11 +55,10 @@ void setup() {
     while (true);
   }
 
-  // Attempt to start the access point
-  Serial.print("Attempting to start AP with SSID: ");
+  // Start the access point
+  Serial.print("Starting AP with SSID: ");
   Serial.println(ssid);
 
-  // Start the AP on channel 1
   if (WiFi.beginAP(ssid, pass, 1)) {
     Serial.println("Access Point started successfully!");
   } else {
@@ -102,7 +97,7 @@ void loop() {
     }
 
     Serial.print("Request Line: ");
-    Serial.println(requestLine);  // Optional debug print
+    Serial.println(requestLine);
 
     // Process the request line
     if (requestLine.startsWith("GET ")) {
@@ -111,7 +106,7 @@ void loop() {
       String path = requestLine.substring(pathStart, pathEnd);
 
       Serial.print("Path: ");
-      Serial.println(path);  // Optional debug print
+      Serial.println(path);
 
       // Process commands based on the path
       if (path.startsWith("/?command=")) {
@@ -123,9 +118,6 @@ void loop() {
 
         // Process the command
         processCommand(command);
-      } else if (path.startsWith("/?")) {
-        // Handle button commands
-        processButtonCommand(path);
       }
     }
 
@@ -139,13 +131,17 @@ void loop() {
     client.println("<!DOCTYPE HTML>");
     client.println("<html>");
     client.println("<head>");
-    client.println("<title>Arduino Servo and Electromagnet Control</title>");
+    client.println("<title>Arduino Control Panel</title>");
     client.println("<style>");
+    // CSS styles
     client.println("body { font-family: Arial, sans-serif; margin: 20px; }");
-    client.println(".control-panel { margin: 20px 0; padding: 10px; background-color: #f0f0f0; border-radius: 5px; }");
+    client.println(".control-panel { margin: 20px 0; }");
+    client.println(".panel { background-color: #f0f0f0; border-radius: 5px; padding: 10px; box-sizing: border-box; }");
+    client.println(".panel-half { width: 48%; display: inline-block; vertical-align: top; margin-right: 2%; }");
+    client.println(".panel-half:last-child { margin-right: 0; }");
     client.println("button { padding: 10px 20px; margin: 5px; background-color: #00BCD4; color: white; border: none; border-radius: 4px; cursor: pointer; }");
     client.println("button:hover { background-color: #0097A7; }");
-    client.println("input[type=text] { padding: 10px; width: 80%; margin: 5px; border: 1px solid #ccc; border-radius: 4px; }");
+    client.println("input[type=text] { padding: 10px; width: calc(100% - 22px); margin: 5px 0; border: 1px solid #ccc; border-radius: 4px; }");
     client.println("</style>");
     client.println("<script>");
     // JavaScript to send command on Enter key
@@ -168,25 +164,64 @@ void loop() {
     client.println("</script>");
     client.println("</head>");
     client.println("<body>");
-    client.println("<h1>Arduino Servo and Electromagnet Control Panel</h1>");
+    client.println("<h1>Arduino Control Panel</h1>");
 
     // Command Input Section
     client.println("<div class='control-panel'>");
-    client.println("<h2>Enter Command</h2>");
-    client.println("<input type='text' id='commandInput' placeholder='Type your command here'>");
+    client.println("<div class='panel'>");
+    client.println("<h2>Enter Single-Key Command</h2>");
+    client.println("<input type='text' id='commandInput' maxlength='1' placeholder='Type a single key command'>");
     client.println("<button onclick='sendCommand()'>Send</button>");
-    client.println("<p>Example commands:</p>");
+    client.println("<p>Single-Key Commands:</p>");
     client.println("<ul>");
-    client.println("<li><code>servo9 open</code></li>");
-    client.println("<li><code>servo10 middle</code></li>");
-    client.println("<li><code>servo11 close</code></li>");
-    client.println("<li><code>magnet1 on</code></li>");
-    client.println("<li><code>magnet2 off</code></li>");
+    client.println("<li><strong>Servo 9:</strong> 'q' (0&deg;), 'w' (90&deg;), 'e' (180&deg;)</li>");
+    client.println("<li><strong>Servo 10:</strong> 'a' (0&deg;), 's' (90&deg;), 'd' (180&deg;)</li>");
+    client.println("<li><strong>Servo 11:</strong> 'z' (0&deg;), 'x' (90&deg;), 'c' (180&deg;)</li>");
+    client.println("<li><strong>All Servos:</strong> 'o' (Open All), 'm' (Middle All), 'p' (Close All)</li>");
+    client.println("<li><strong>Electromagnet 1:</strong> '1' (On), '2' (Off)</li>");
+    client.println("<li><strong>Electromagnet 2:</strong> '3' (On), '4' (Off)</li>");
     client.println("</ul>");
     client.println("</div>");
+    client.println("</div>");
 
-    // Current Status
+    // Begin side-by-side section
     client.println("<div class='control-panel'>");
+
+    // Button Controls Section (Left Side)
+    client.println("<div class='panel panel-half'>");
+    client.println("<h2>Button Controls</h2>");
+    // Servo 9 buttons
+    client.println("<h3>Servo 9</h3>");
+    client.println("<button onclick=\"sendCommandFromButton('q')\">Close (0&deg;)</button>");
+    client.println("<button onclick=\"sendCommandFromButton('w')\">Middle (90&deg;)</button>");
+    client.println("<button onclick=\"sendCommandFromButton('e')\">Open (180&deg;)</button>");
+    // Servo 10 buttons
+    client.println("<h3>Servo 10</h3>");
+    client.println("<button onclick=\"sendCommandFromButton('a')\">Close (0&deg;)</button>");
+    client.println("<button onclick=\"sendCommandFromButton('s')\">Middle (90&deg;)</button>");
+    client.println("<button onclick=\"sendCommandFromButton('d')\">Open (180&deg;)</button>");
+    // Servo 11 buttons
+    client.println("<h3>Servo 11</h3>");
+    client.println("<button onclick=\"sendCommandFromButton('z')\">Close (0&deg;)</button>");
+    client.println("<button onclick=\"sendCommandFromButton('x')\">Middle (90&deg;)</button>");
+    client.println("<button onclick=\"sendCommandFromButton('c')\">Open (180&deg;)</button>");
+    // All Servos Control
+    client.println("<h3>All Servos</h3>");
+    client.println("<button onclick=\"sendCommandFromButton('o')\">Open All Servos (180&deg;)</button>");
+    client.println("<button onclick=\"sendCommandFromButton('m')\">Middle All Servos (90&deg;)</button>");
+    client.println("<button onclick=\"sendCommandFromButton('p')\">Close All Servos (0&deg;)</button>");
+    // Electromagnet 1 buttons
+    client.println("<h3>Electromagnet 1</h3>");
+    client.println("<button onclick=\"sendCommandFromButton('1')\">Turn On</button>");
+    client.println("<button onclick=\"sendCommandFromButton('2')\">Turn Off</button>");
+    // Electromagnet 2 buttons
+    client.println("<h3>Electromagnet 2</h3>");
+    client.println("<button onclick=\"sendCommandFromButton('3')\">Turn On</button>");
+    client.println("<button onclick=\"sendCommandFromButton('4')\">Turn Off</button>");
+    client.println("</div>");
+
+    // Current Status Section (Right Side)
+    client.println("<div class='panel panel-half'>");
     client.println("<h2>Current Status</h2>");
     client.println("<p><strong>Servo 9 Position:</strong> " + String(pos9) + "&deg;</p>");
     client.println("<p><strong>Servo 10 Position:</strong> " + String(pos10) + "&deg;</p>");
@@ -195,37 +230,16 @@ void loop() {
     client.println("<p><strong>Electromagnet 2 State:</strong> " + String(pin8State == HIGH ? "On" : "Off") + "</p>");
     client.println("</div>");
 
-    // Button Controls Section
-    client.println("<div class='control-panel'>");
-    client.println("<h2>Button Controls</h2>");
-    // Servo 9 buttons
-    client.println("<h3>Servo 9</h3>");
-    client.println("<button onclick=\"location.href='/?servo=9&dir=close'\">Close (0&deg;)</button>");
-    client.println("<button onclick=\"location.href='/?servo=9&dir=middle'\">Middle (90&deg;)</button>");
-    client.println("<button onclick=\"location.href='/?servo=9&dir=open'\">Open (180&deg;)</button>");
-    // Servo 10 buttons
-    client.println("<h3>Servo 10</h3>");
-    client.println("<button onclick=\"location.href='/?servo=10&dir=close'\">Close (0&deg;)</button>");
-    client.println("<button onclick=\"location.href='/?servo=10&dir=middle'\">Middle (90&deg;)</button>");
-    client.println("<button onclick=\"location.href='/?servo=10&dir=open'\">Open (180&deg;)</button>");
-    // Servo 11 buttons
-    client.println("<h3>Servo 11</h3>");
-    client.println("<button onclick=\"location.href='/?servo=11&dir=close'\">Close (0&deg;)</button>");
-    client.println("<button onclick=\"location.href='/?servo=11&dir=middle'\">Middle (90&deg;)</button>");
-    client.println("<button onclick=\"location.href='/?servo=11&dir=open'\">Open (180&deg;)</button>");
-    // Electromagnet 1 buttons
-    client.println("<h3>Electromagnet 1</h3>");
-    client.println("<button onclick=\"location.href='/?magnet=1&state=on'\">Turn On</button>");
-    client.println("<button onclick=\"location.href='/?magnet=1&state=off'\">Turn Off</button>");
-    // Electromagnet 2 buttons
-    client.println("<h3>Electromagnet 2</h3>");
-    client.println("<button onclick=\"location.href='/?magnet=2&state=on'\">Turn On</button>");
-    client.println("<button onclick=\"location.href='/?magnet=2&state=off'\">Turn Off</button>");
-    // All Servos Control
-    client.println("<h3>All Servos</h3>");
-    client.println("<button onclick=\"location.href='/?all=open'\">Open All Servos (180&deg;)</button>");
-    client.println("<button onclick=\"location.href='/?all=close'\">Close All Servos (0&deg;)</button>");
+    // End side-by-side section
     client.println("</div>");
+
+    // JavaScript function to handle button commands
+    client.println("<script>");
+    client.println("function sendCommandFromButton(cmd) {");
+    client.println("  document.getElementById('commandInput').value = cmd;");
+    client.println("  sendCommand();");
+    client.println("}");
+    client.println("</script>");
 
     client.println("</body></html>");
 
@@ -237,148 +251,109 @@ void loop() {
 
 // Function to process commands
 void processCommand(String command) {
-  command.trim(); // Remove leading and trailing whitespace
+  command.trim(); // Remove whitespace
   command.toLowerCase(); // Convert to lowercase for case-insensitive comparison
 
-  if (command.startsWith("servo")) {
-    // Control servos
-    // Find the space after 'servoX'
-    int spaceIndex = command.indexOf(' ', 5);
-    if (spaceIndex == -1) {
-      Serial.println("Invalid command format for servo.");
-      return;
-    }
-
-    String servoNumStr = command.substring(5, spaceIndex); // Extract servo number string
-    servoNumStr.trim();
-    int servoNum = servoNumStr.toInt();
-    String action = command.substring(spaceIndex + 1);
-    action.trim();
-
-    Serial.print("Servo Command: servo");
-    Serial.print(servoNum);
-    Serial.print(" ");
-    Serial.println(action);
-
-    int* currentPos = nullptr;
-    Servo* targetServo = nullptr;
-
-    if (servoNum == 9) {
-      currentPos = &pos9;
-      targetServo = &servo9;
-    } else if (servoNum == 10) {
-      currentPos = &pos10;
-      targetServo = &servo10;
-    } else if (servoNum == 11) {
-      currentPos = &pos11;
-      targetServo = &servo11;
-    } else {
-      Serial.println("Invalid servo number.");
-      return;
-    }
-
-    if (action == "close") {
-      *currentPos = MIN_ANGLE;
-    } else if (action == "open") {
-      *currentPos = MAX_ANGLE;
-    } else if (action == "middle") {
-      *currentPos = CENTER_ANGLE;
-    } else {
-      Serial.println("Invalid action for servo.");
-      return;
-    }
-
-    targetServo->write(*currentPos);
-    Serial.print("Moved servo ");
-    Serial.print(servoNum);
-    Serial.print(" to position ");
-    Serial.println(*currentPos);
-  } else if (command.startsWith("magnet")) {
-    // Control electromagnets
-    // Find the space after 'magnetX'
-    int spaceIndex = command.indexOf(' ', 6);
-    if (spaceIndex == -1) {
-      Serial.println("Invalid command format for magnet.");
-      return;
-    }
-
-    String magnetNumStr = command.substring(6, spaceIndex); // Extract magnet number string
-    magnetNumStr.trim();
-    int magnetNum = magnetNumStr.toInt();
-    String action = command.substring(spaceIndex + 1);
-    action.trim();
-
-    Serial.print("Magnet Command: magnet");
-    Serial.print(magnetNum);
-    Serial.print(" ");
-    Serial.println(action);
-
-    int* magnetState = nullptr;
-    int pin = 0;
-
-    if (magnetNum == 1) {
-      magnetState = &pin13State;
-      pin = 13;
-    } else if (magnetNum == 2) {
-      magnetState = &pin8State;
-      pin = 8;
-    } else {
-      Serial.println("Invalid magnet number.");
-      return;
-    }
-
-    if (action == "on") {
-      *magnetState = HIGH;
-    } else if (action == "off") {
-      *magnetState = LOW;
-    } else {
-      Serial.println("Invalid action for magnet.");
-      return;
-    }
-
-    digitalWrite(pin, *magnetState);
-    Serial.print("Set Electromagnet ");
-    Serial.print(magnetNum);
-    Serial.print(" (pin ");
-    Serial.print(pin);
-    Serial.print(") to ");
-    Serial.println(*magnetState == HIGH ? "HIGH" : "LOW");
-  } else {
-    Serial.println("Unknown command.");
+  if (command.length() != 1) {
+    Serial.println("Invalid command length. Only single-key commands are accepted.");
+    return;
   }
-}
 
-// Function to process button commands
-void processButtonCommand(String path) {
-  if (path.startsWith("/?servo=")) {
-    int servoIndex = path.indexOf("servo=");
-    int dirIndex = path.indexOf("dir=");
-    if (servoIndex != -1 && dirIndex != -1) {
-      String servoNumStr = path.substring(servoIndex + 6, path.indexOf('&', servoIndex));
-      int servoNum = servoNumStr.toInt();
-      String dirStr = path.substring(dirIndex + 4);
-      dirStr = dirStr.substring(0, dirStr.indexOf('&') == -1 ? dirStr.length() : dirStr.indexOf('&'));
-      String command = "servo" + String(servoNum) + " " + dirStr;
-      processCommand(command);
-    }
-  } else if (path.startsWith("/?magnet=")) {
-    int magnetIndex = path.indexOf("magnet=");
-    int stateIndex = path.indexOf("state=");
-    if (magnetIndex != -1 && stateIndex != -1) {
-      String magnetNumStr = path.substring(magnetIndex + 7, path.indexOf('&', magnetIndex));
-      int magnetNum = magnetNumStr.toInt();
-      String stateStr = path.substring(stateIndex + 6);
-      stateStr = stateStr.substring(0, stateStr.indexOf('&') == -1 ? stateStr.length() : stateStr.indexOf('&'));
-      String command = "magnet" + String(magnetNum) + " " + stateStr;
-      processCommand(command);
-    }
-  } else if (path.startsWith("/?all=")) {
-    String action = path.substring(6);
-    if (action.startsWith("open")) {
+  char cmd = command.charAt(0);
+
+  switch (cmd) {
+    // Servo 9 Control
+    case 'q':
+      servo9.write(MIN_ANGLE);
+      pos9 = MIN_ANGLE;
+      Serial.println("Servo 9 moved to 0°");
+      break;
+    case 'w':
+      servo9.write(CENTER_ANGLE);
+      pos9 = CENTER_ANGLE;
+      Serial.println("Servo 9 moved to 90°");
+      break;
+    case 'e':
+      servo9.write(MAX_ANGLE);
+      pos9 = MAX_ANGLE;
+      Serial.println("Servo 9 moved to 180°");
+      break;
+
+    // Servo 10 Control
+    case 'a':
+      servo10.write(MIN_ANGLE);
+      pos10 = MIN_ANGLE;
+      Serial.println("Servo 10 moved to 0°");
+      break;
+    case 's':
+      servo10.write(CENTER_ANGLE);
+      pos10 = CENTER_ANGLE;
+      Serial.println("Servo 10 moved to 90°");
+      break;
+    case 'd':
+      servo10.write(MAX_ANGLE);
+      pos10 = MAX_ANGLE;
+      Serial.println("Servo 10 moved to 180°");
+      break;
+
+    // Servo 11 Control
+    case 'z':
+      servo11.write(MIN_ANGLE);
+      pos11 = MIN_ANGLE;
+      Serial.println("Servo 11 moved to 0°");
+      break;
+    case 'x':
+      servo11.write(CENTER_ANGLE);
+      pos11 = CENTER_ANGLE;
+      Serial.println("Servo 11 moved to 90°");
+      break;
+    case 'c':
+      servo11.write(MAX_ANGLE);
+      pos11 = MAX_ANGLE;
+      Serial.println("Servo 11 moved to 180°");
+      break;
+
+    // All Servos Control
+    case 'o': // Open All
       moveAllServos(MAX_ANGLE);
-    } else if (action.startsWith("close")) {
+      Serial.println("All servos moved to 180°");
+      break;
+    case 'm': // Middle All
+      moveAllServos(CENTER_ANGLE);
+      Serial.println("All servos moved to 90°");
+      break;
+    case 'p': // Close All
       moveAllServos(MIN_ANGLE);
-    }
+      Serial.println("All servos moved to 0°");
+      break;
+
+    // Electromagnet 1 (Pin 13)
+    case '1': // Turn On
+      pin13State = HIGH;
+      digitalWrite(13, pin13State);
+      Serial.println("Electromagnet 1 turned On.");
+      break;
+    case '2': // Turn Off
+      pin13State = LOW;
+      digitalWrite(13, pin13State);
+      Serial.println("Electromagnet 1 turned Off.");
+      break;
+
+    // Electromagnet 2 (Pin 8)
+    case '3': // Turn On
+      pin8State = HIGH;
+      digitalWrite(8, pin8State);
+      Serial.println("Electromagnet 2 turned On.");
+      break;
+    case '4': // Turn Off
+      pin8State = LOW;
+      digitalWrite(8, pin8State);
+      Serial.println("Electromagnet 2 turned Off.");
+      break;
+
+    default:
+      Serial.println("Unknown command.");
+      break;
   }
 }
 
@@ -413,7 +388,4 @@ void moveAllServos(int angle) {
   pos9 = angle;
   pos10 = angle;
   pos11 = angle;
-
-  Serial.print("All servos moved to position: ");
-  Serial.println(angle);
 }
