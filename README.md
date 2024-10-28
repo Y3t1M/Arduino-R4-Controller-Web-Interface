@@ -1,9 +1,6 @@
 This project enables remote control of multiple servos and electromagnets via a web-based interface hosted on an Arduino R4 WiFi board. Users can access the control panel over WiFi to operate servos connected to pins 9, 10, and 11 and electromagnets connected to pins 13 and 8.
 
-Features:
 Web-Based Control Panel: Accessible via WiFi, no additional apps required.
-
-Servo Control:
 Individual Movement: Control servos on pins 9, 10, and 11 to move to Close (0°), Middle (90°), or Open (180°) positions.
 Simultaneous Movement: Open or close all servos at once with dedicated buttons.
 Electromagnet Control:
@@ -20,7 +17,7 @@ Electromagnet 1: Connected to pin 13.
 Electromagnet 2: Connected to pin 8.
 
 Power Supply:
-External Power Source: Recommended for servos and electromagnets.
+External Power Source: Recommended for servos and electromagnets. ( I used my laptop for a bit becuase it was convenient but if i had too many things plugged in it wouldnt work becuase it was over drawing so i had to swicth to plugging it into the wall.)
 
 Driver Components:
 Transistors/MOSFETs: For switching electromagnets.
@@ -45,10 +42,10 @@ Electromagnets:
 
 Use appropriate driver circuits (e.g., N-MOSFETs) connected to pins 13 and 8.
 Connect flyback diodes across the electromagnet terminals.
-Power electromagnets with an external power supply matching their voltage and current requirements.
+Power electromagnets with an external power supply match their voltage and current requirements.
 Common Ground:
 
-Connect the grounds of the Arduino, servos, electromagnets, and external power supplies together.
+Connect the grounds of the Arduino, servos, electromagnets, and external power supplies.
 Software Setup
 Clone or Download this repository.
 
@@ -56,13 +53,13 @@ Open the Sketch in the Arduino IDE.
 
 Configure WiFi Access Point (optional):
 
-Change ssid and pass variables in the code if you wish to modify the network name and password.
+Change SSID and pass variables in the code to modify the network name and password.
 Upload the Code to your Arduino R4 WiFi board.
 
 Usage Instructions
 Connect to WiFi Network:
 
-On your computer or mobile device, connect to the WiFi network named RVR_Network (or your custom SSID).
+Connect to your computer or mobile device to the WiFi network RVR_Network (or your custom SSID).
 Enter the password 123456789 (or your custom password).
 Access the Control Panel:
 
