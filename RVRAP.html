@@ -1,0 +1,93 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>Arduino Servo and Electromagnet Control</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .control-panel { margin: 20px 0; padding: 10px; background-color: #f0f0f0; border-radius: 5px; }
+    button { padding: 10px 20px; margin: 5px; background-color: #00BCD4; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background-color: #0097A7; }
+    input[type=text] { padding: 10px; width: 80%; margin: 5px; border: 1px solid #ccc; border-radius: 4px; }
+  </style>
+  <script>
+    // JavaScript to send command on Enter key
+    document.addEventListener('DOMContentLoaded', function() {
+      var input = document.getElementById('commandInput');
+      input.addEventListener('keyup', function(event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          sendCommand();
+        }
+      });
+    });
+    function sendCommand() {
+      var command = document.getElementById('commandInput').value;
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/?command=' + encodeURIComponent(command), true);
+      xhr.send();
+      document.getElementById('commandInput').value = ''; // Clear the input
+    }
+  </script>
+</head>
+<body>
+  <h1>Arduino Servo and Electromagnet Control Panel</h1>
+
+  <!-- Command Input Section -->
+  <div class='control-panel'>
+    <h2>Enter Command</h2>
+    <input type='text' id='commandInput' placeholder='Type your command here'>
+    <button onclick='sendCommand()'>Send</button>
+    <p>Example commands:</p>
+    <ul>
+      <li><code>servo9 open</code></li>
+      <li><code>servo10 middle</code></li>
+      <li><code>servo11 close</code></li>
+      <li><code>magnet1 on</code></li>
+      <li><code>magnet2 off</code></li>
+    </ul>
+  </div>
+
+  <!-- Current Status -->
+  <div class='control-panel'>
+    <h2>Current Status</h2>
+    <p><strong>Servo 9 Position:</strong> 90&deg;</p>
+    <p><strong>Servo 10 Position:</strong> 90&deg;</p>
+    <p><strong>Servo 11 Position:</strong> 90&deg;</p>
+    <p><strong>Electromagnet 1 State:</strong> Off</p>
+    <p><strong>Electromagnet 2 State:</strong> Off</p>
+  </div>
+
+  <!-- Button Controls Section -->
+  <div class='control-panel'>
+    <h2>Button Controls</h2>
+    <!-- Servo 9 buttons -->
+    <h3>Servo 9</h3>
+    <button onclick="location.href='/?servo=9&dir=close'">Close (0&deg;)</button>
+    <button onclick="location.href='/?servo=9&dir=middle'">Middle (90&deg;)</button>
+    <button onclick="location.href='/?servo=9&dir=open'">Open (180&deg;)</button>
+    <!-- Servo 10 buttons -->
+    <h3>Servo 10</h3>
+    <button onclick="location.href='/?servo=10&dir=close'">Close (0&deg;)</button>
+    <button onclick="location.href='/?servo=10&dir=middle'">Middle (90&deg;)</button>
+    <button onclick="location.href='/?servo=10&dir=open'">Open (180&deg;)</button>
+    <!-- Servo 11 buttons -->
+    <h3>Servo 11</h3>
+    <button onclick="location.href='/?servo=11&dir=close'">Close (0&deg;)</button>
+    <button onclick="location.href='/?servo=11&dir=middle'">Middle (90&deg;)</button>
+    <button onclick="location.href='/?servo=11&dir=open'">Open (180&deg;)</button>
+    <!-- Electromagnet 1 buttons -->
+    <h3>Electromagnet 1</h3>
+    <button onclick="location.href='/?magnet=1&state=on'">Turn On</button>
+    <button onclick="location.href='/?magnet=1&state=off'">Turn Off</button>
+    <!-- Electromagnet 2 buttons -->
+    <h3>Electromagnet 2</h3>
+    <button onclick="location.href='/?magnet=2&state=on'">Turn On</button>
+    <button onclick="location.href='/?magnet=2&state=off'">Turn Off</button>
+    <!-- All Servos Control -->
+    <h3>All Servos</h3>
+    <button onclick="location.href='/?all=open'">Open All Servos (180&deg;)</button>
+    <button onclick="location.href='/?all=close'">Close All Servos (0&deg;)</button>
+  </div>
+
+</body>
+</html>
