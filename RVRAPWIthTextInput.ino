@@ -1,6 +1,8 @@
 #include <WiFiS3.h>
 #include <Servo.h>
 
+#define JSON_BUFF_SIZE 256
+
 // Set the SSID and Password for the access point
 char ssid[] = "RVR_Network";    // Access point name
 char pass[] = "123456789";      // Password for WPA2
@@ -14,7 +16,7 @@ Servo servo11;
 // Current positions of servos
 int pos9 = 90;
 int pos10 = 90;
-int pos11 = 90;
+// Remove pos11 as it's no longer used for positioning
 
 // Define angle constants
 const int MIN_ANGLE = 0;
@@ -24,6 +26,11 @@ const int MAX_ANGLE = 180;
 // States of pin 13 and pin 8
 int pin13State = LOW; // Electromagnet 1 (Pin 13)
 int pin8State = LOW;  // Electromagnet 2 (Pin 8)
+
+// Variables for Servo 11 movement
+bool servo11Moving = false;
+unsigned long servo11MoveStartTime = 0;
+int servo11Direction = 0; // 1 for forward, -1 for backward
 
 void setup() {
   // Initialize serial communication
@@ -40,7 +47,7 @@ void setup() {
   // Set initial positions
   servo9.write(pos9);
   servo10.write(pos10);
-  servo11.write(pos11);
+  servo11.write(CENTER_ANGLE); // Stop position for continuous rotation servo
 
   // Set up pins as outputs for electromagnets
   pinMode(13, OUTPUT);
@@ -77,6 +84,16 @@ void setup() {
 }
 
 void loop() {
+  // Handle Servo 11 movement timing
+  if (servo11Moving) {
+    if (millis() - servo11MoveStartTime >= 5000) {
+      // Stop Servo 11 after 5 seconds
+      servo11.write(CENTER_ANGLE); // Stop position
+      servo11Moving = false;
+      Serial.println("Servo 11 movement completed.");
+    }
+  }
+
   WiFiClient client = server.available();
 
   if (client) {
@@ -87,11 +104,10 @@ void loop() {
     while (client.connected()) {
       if (client.available()) {
         char c = client.read();
+        requestLine += c;
         if (c == '\n') {
           // End of the request line
           break;
-        } else if (c != '\r') {
-          requestLine += c;
         }
       }
     }
@@ -118,135 +134,165 @@ void loop() {
 
         // Process the command
         processCommand(command);
+
+        // Send HTTP response
+        client.println("HTTP/1.1 200 OK");
+        client.println("Content-Type: text/plain");
+        client.println("Connection: close");
+        client.println();
+        client.println("OK");
+      }
+      else if (path.startsWith("/status")) {
+        // Handle status request
+        sendStatus(client);
+      }
+      else {
+        // Serve the main page
+        servePage(client);
       }
     }
-
-    // Send HTTP response
-    client.println("HTTP/1.1 200 OK");
-    client.println("Content-Type: text/html");
-    client.println("Connection: close");
-    client.println();
-
-    // HTML content with command input and buttons
-    client.println("<!DOCTYPE HTML>");
-    client.println("<html>");
-    client.println("<head>");
-    client.println("<title>Arduino Control Panel</title>");
-    client.println("<style>");
-    // CSS styles
-    client.println("body { font-family: Arial, sans-serif; margin: 20px; }");
-    client.println(".control-panel { margin: 20px 0; }");
-    client.println(".panel { background-color: #f0f0f0; border-radius: 5px; padding: 10px; box-sizing: border-box; }");
-    client.println(".panel-half { width: 48%; display: inline-block; vertical-align: top; margin-right: 2%; }");
-    client.println(".panel-half:last-child { margin-right: 0; }");
-    client.println("button { padding: 10px 20px; margin: 5px; background-color: #00BCD4; color: white; border: none; border-radius: 4px; cursor: pointer; }");
-    client.println("button:hover { background-color: #0097A7; }");
-    client.println("input[type=text] { padding: 10px; width: calc(100% - 22px); margin: 5px 0; border: 1px solid #ccc; border-radius: 4px; }");
-    client.println("</style>");
-    client.println("<script>");
-    // JavaScript to send command on Enter key
-    client.println("document.addEventListener('DOMContentLoaded', function() {");
-    client.println("  var input = document.getElementById('commandInput');");
-    client.println("  input.addEventListener('keyup', function(event) {");
-    client.println("    if (event.key === 'Enter') {");
-    client.println("      event.preventDefault();");
-    client.println("      sendCommand();");
-    client.println("    }");
-    client.println("  });");
-    client.println("});");
-    client.println("function sendCommand() {");
-    client.println("  var command = document.getElementById('commandInput').value;");
-    client.println("  var xhr = new XMLHttpRequest();");
-    client.println("  xhr.open('GET', '/?command=' + encodeURIComponent(command), true);");
-    client.println("  xhr.send();");
-    client.println("  document.getElementById('commandInput').value = '';"); // Clear the input
-    client.println("}");
-    client.println("</script>");
-    client.println("</head>");
-    client.println("<body>");
-    client.println("<h1>Arduino Control Panel</h1>");
-
-    // Command Input Section
-    client.println("<div class='control-panel'>");
-    client.println("<div class='panel'>");
-    client.println("<h2>Enter Single-Key Command</h2>");
-    client.println("<input type='text' id='commandInput' maxlength='1' placeholder='Type a single key command'>");
-    client.println("<button onclick='sendCommand()'>Send</button>");
-    client.println("<p>Single-Key Commands:</p>");
-    client.println("<ul>");
-    client.println("<li><strong>Servo 9:</strong> 'q' (0&deg;), 'w' (90&deg;), 'e' (180&deg;)</li>");
-    client.println("<li><strong>Servo 10:</strong> 'a' (0&deg;), 's' (90&deg;), 'd' (180&deg;)</li>");
-    client.println("<li><strong>Servo 11:</strong> 'z' (0&deg;), 'x' (90&deg;), 'c' (180&deg;)</li>");
-    client.println("<li><strong>All Servos:</strong> 'o' (Open All), 'm' (Middle All), 'p' (Close All)</li>");
-    client.println("<li><strong>Electromagnet 1:</strong> '1' (On), '2' (Off)</li>");
-    client.println("<li><strong>Electromagnet 2:</strong> '3' (On), '4' (Off)</li>");
-    client.println("</ul>");
-    client.println("</div>");
-    client.println("</div>");
-
-    // Begin side-by-side section
-    client.println("<div class='control-panel'>");
-
-    // Button Controls Section (Left Side)
-    client.println("<div class='panel panel-half'>");
-    client.println("<h2>Button Controls</h2>");
-    // Servo 9 buttons
-    client.println("<h3>Servo 9</h3>");
-    client.println("<button onclick=\"sendCommandFromButton('q')\">Close (0&deg;)</button>");
-    client.println("<button onclick=\"sendCommandFromButton('w')\">Middle (90&deg;)</button>");
-    client.println("<button onclick=\"sendCommandFromButton('e')\">Open (180&deg;)</button>");
-    // Servo 10 buttons
-    client.println("<h3>Servo 10</h3>");
-    client.println("<button onclick=\"sendCommandFromButton('a')\">Close (0&deg;)</button>");
-    client.println("<button onclick=\"sendCommandFromButton('s')\">Middle (90&deg;)</button>");
-    client.println("<button onclick=\"sendCommandFromButton('d')\">Open (180&deg;)</button>");
-    // Servo 11 buttons
-    client.println("<h3>Servo 11</h3>");
-    client.println("<button onclick=\"sendCommandFromButton('z')\">Close (0&deg;)</button>");
-    client.println("<button onclick=\"sendCommandFromButton('x')\">Middle (90&deg;)</button>");
-    client.println("<button onclick=\"sendCommandFromButton('c')\">Open (180&deg;)</button>");
-    // All Servos Control
-    client.println("<h3>All Servos</h3>");
-    client.println("<button onclick=\"sendCommandFromButton('o')\">Open All Servos (180&deg;)</button>");
-    client.println("<button onclick=\"sendCommandFromButton('m')\">Middle All Servos (90&deg;)</button>");
-    client.println("<button onclick=\"sendCommandFromButton('p')\">Close All Servos (0&deg;)</button>");
-    // Electromagnet 1 buttons
-    client.println("<h3>Electromagnet 1</h3>");
-    client.println("<button onclick=\"sendCommandFromButton('1')\">Turn On</button>");
-    client.println("<button onclick=\"sendCommandFromButton('2')\">Turn Off</button>");
-    // Electromagnet 2 buttons
-    client.println("<h3>Electromagnet 2</h3>");
-    client.println("<button onclick=\"sendCommandFromButton('3')\">Turn On</button>");
-    client.println("<button onclick=\"sendCommandFromButton('4')\">Turn Off</button>");
-    client.println("</div>");
-
-    // Current Status Section (Right Side)
-    client.println("<div class='panel panel-half'>");
-    client.println("<h2>Current Status</h2>");
-    client.println("<p><strong>Servo 9 Position:</strong> " + String(pos9) + "&deg;</p>");
-    client.println("<p><strong>Servo 10 Position:</strong> " + String(pos10) + "&deg;</p>");
-    client.println("<p><strong>Servo 11 Position:</strong> " + String(pos11) + "&deg;</p>");
-    client.println("<p><strong>Electromagnet 1 State:</strong> " + String(pin13State == HIGH ? "On" : "Off") + "</p>");
-    client.println("<p><strong>Electromagnet 2 State:</strong> " + String(pin8State == HIGH ? "On" : "Off") + "</p>");
-    client.println("</div>");
-
-    // End side-by-side section
-    client.println("</div>");
-
-    // JavaScript function to handle button commands
-    client.println("<script>");
-    client.println("function sendCommandFromButton(cmd) {");
-    client.println("  document.getElementById('commandInput').value = cmd;");
-    client.println("  sendCommand();");
-    client.println("}");
-    client.println("</script>");
-
-    client.println("</body></html>");
 
     delay(1);
     client.stop();
     Serial.println("Client disconnected.");
   }
+}
+
+// Function to serve the main page
+void servePage(WiFiClient& client) {
+  // Send HTTP response
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+
+  // HTML content with command input and buttons
+  client.println("<!DOCTYPE HTML>");
+  client.println("<html>");
+  client.println("<head>");
+  client.println("<title>Arduino Control Panel</title>");
+  client.println("<style>");
+  // CSS styles
+  client.println("body { font-family: Arial, sans-serif; margin: 20px; }");
+  client.println(".control-panel { margin: 20px 0; }");
+  client.println(".panel { background-color: #f0f0f0; border-radius: 5px; padding: 10px; box-sizing: border-box; }");
+  client.println(".panel-half { width: 48%; display: inline-block; vertical-align: top; margin-right: 2%; }");
+  client.println(".panel-half:last-child { margin-right: 0; }");
+  client.println("button { padding: 10px 20px; margin: 5px; background-color: #00BCD4; color: white; border: none; border-radius: 4px; cursor: pointer; }");
+  client.println("button:hover { background-color: #0097A7; }");
+  client.println("input[type=text] { padding: 10px; width: calc(100% - 22px); margin: 5px 0; border: 1px solid #ccc; border-radius: 4px; }");
+  client.println("</style>");
+  client.println("<script>");
+  // JavaScript to send command on Enter key and update status
+  client.println("document.addEventListener('DOMContentLoaded', function() {");
+  client.println("  var input = document.getElementById('commandInput');");
+  client.println("  input.addEventListener('keyup', function(event) {");
+  client.println("    if (event.key === 'Enter') {");
+  client.println("      event.preventDefault();");
+  client.println("      sendCommand();");
+  client.println("    }");
+  client.println("  });");
+  client.println("  // Start status updates");
+  client.println("  setInterval(updateStatus, 1000);");
+  client.println("});");
+  client.println("function sendCommand() {");
+  client.println("  var command = document.getElementById('commandInput').value;");
+  client.println("  var xhr = new XMLHttpRequest();");
+  client.println("  xhr.open('GET', '/?command=' + encodeURIComponent(command), true);");
+  client.println("  xhr.send();");
+  client.println("  document.getElementById('commandInput').value = '';"); // Clear the input
+  client.println("}");
+  client.println("function sendCommandFromButton(cmd) {");
+  client.println("  document.getElementById('commandInput').value = cmd;");
+  client.println("  sendCommand();");
+  client.println("}");
+  client.println("function updateStatus() {");
+  client.println("  var xhr = new XMLHttpRequest();");
+  client.println("  xhr.open('GET', '/status', true);");
+  client.println("  xhr.onreadystatechange = function() {");
+  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
+  client.println("      var status = JSON.parse(xhr.responseText);");
+  client.println("      document.getElementById('servo9Status').innerHTML = status.pos9 + '&deg;';");
+  client.println("      document.getElementById('servo10Status').innerHTML = status.pos10 + '&deg;';");
+  client.println("      document.getElementById('servo11Status').innerHTML = status.servo11State;");
+  client.println("      document.getElementById('electro1Status').innerHTML = status.electro1;");
+  client.println("      document.getElementById('electro2Status').innerHTML = status.electro2;");
+  client.println("    }");
+  client.println("  };");
+  client.println("  xhr.send();");
+  client.println("}");
+  client.println("</script>");
+  client.println("</head>");
+  client.println("<body>");
+  client.println("<h1>Arduino Control Panel</h1>");
+
+  // Command Input Section
+  client.println("<div class='control-panel'>");
+  client.println("<div class='panel'>");
+  client.println("<h2>Enter Single-Key Command</h2>");
+  client.println("<input type='text' id='commandInput' maxlength='1' placeholder='Type a single key command'>");
+  client.println("<button onclick='sendCommand()'>Send</button>");
+  client.println("<p>Single-Key Commands:</p>");
+  client.println("<ul>");
+  client.println("<li><strong>Servo 9:</strong> 'q' (0&deg;), 'w' (90&deg;), 'e' (180&deg;)</li>");
+  client.println("<li><strong>Servo 10:</strong> 'a' (0&deg;), 's' (90&deg;), 'd' (180&deg;)</li>");
+  client.println("<li><strong>Servo 11 (Axon Mini):</strong> 'z' (Forward 5s), 'x' (Backward 5s)</li>");
+  client.println("<li><strong>All Servos:</strong> 'o' (Open All), 'm' (Middle All), 'p' (Close All)</li>");
+  client.println("<li><strong>Electromagnet 1:</strong> '1' (On), '2' (Off)</li>");
+  client.println("<li><strong>Electromagnet 2:</strong> '3' (On), '4' (Off)</li>");
+  client.println("</ul>");
+  client.println("</div>");
+  client.println("</div>");
+
+  // Begin side-by-side section
+  client.println("<div class='control-panel'>");
+
+  // Button Controls Section (Left Side)
+  client.println("<div class='panel panel-half'>");
+  client.println("<h2>Button Controls</h2>");
+  // Servo 9 buttons
+  client.println("<h3>Servo 9</h3>");
+  client.println("<button onclick=\"sendCommandFromButton('q')\">Close (0&deg;)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('w')\">Middle (90&deg;)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('e')\">Open (180&deg;)</button>");
+  // Servo 10 buttons
+  client.println("<h3>Servo 10</h3>");
+  client.println("<button onclick=\"sendCommandFromButton('a')\">Close (0&deg;)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('s')\">Middle (90&deg;)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('d')\">Open (180&deg;)</button>");
+  // Servo 11 buttons (Axon Mini)
+  client.println("<h3>Servo 11 (Axon Mini)</h3>");
+  client.println("<button onclick=\"sendCommandFromButton('z')\">Forward (5s)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('x')\">Backward (5s)</button>");
+  // All Servos Control
+  client.println("<h3>All Servos</h3>");
+  client.println("<button onclick=\"sendCommandFromButton('o')\">Open All Servos (180&deg;)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('m')\">Middle All Servos (90&deg;)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('p')\">Close All Servos (0&deg;)</button>");
+  // Electromagnet 1 buttons
+  client.println("<h3>Electromagnet 1</h3>");
+  client.println("<button onclick=\"sendCommandFromButton('1')\">Turn On</button>");
+  client.println("<button onclick=\"sendCommandFromButton('2')\">Turn Off</button>");
+  // Electromagnet 2 buttons
+  client.println("<h3>Electromagnet 2</h3>");
+  client.println("<button onclick=\"sendCommandFromButton('3')\">Turn On</button>");
+  client.println("<button onclick=\"sendCommandFromButton('4')\">Turn Off</button>");
+  client.println("</div>");
+
+  // Current Status Section (Right Side)
+  client.println("<div class='panel panel-half'>");
+  client.println("<h2>Current Status</h2>");
+  client.println("<p><strong>Servo 9 Position:</strong> <span id='servo9Status'>Loading...</span></p>");
+  client.println("<p><strong>Servo 10 Position:</strong> <span id='servo10Status'>Loading...</span></p>");
+  client.println("<p><strong>Servo 11 State:</strong> <span id='servo11Status'>Loading...</span></p>");
+  client.println("<p><strong>Electromagnet 1 State:</strong> <span id='electro1Status'>Loading...</span></p>");
+  client.println("<p><strong>Electromagnet 2 State:</strong> <span id='electro2Status'>Loading...</span></p>");
+  client.println("</div>");
+
+  // End side-by-side section
+  client.println("</div>");
+
+  client.println("</body></html>");
 }
 
 // Function to process commands
@@ -296,21 +342,22 @@ void processCommand(String command) {
       Serial.println("Servo 10 moved to 180°");
       break;
 
-    // Servo 11 Control
+    // Servo 11 Control (Axon Mini)
     case 'z':
-      servo11.write(MIN_ANGLE);
-      pos11 = MIN_ANGLE;
-      Serial.println("Servo 11 moved to 0°");
+      // Move forward for 5 seconds
+      servo11.write(MAX_ANGLE); // Full speed forward
+      servo11Moving = true;
+      servo11Direction = 1;
+      servo11MoveStartTime = millis();
+      Serial.println("Servo 11 moving forward for 5 seconds.");
       break;
     case 'x':
-      servo11.write(CENTER_ANGLE);
-      pos11 = CENTER_ANGLE;
-      Serial.println("Servo 11 moved to 90°");
-      break;
-    case 'c':
-      servo11.write(MAX_ANGLE);
-      pos11 = MAX_ANGLE;
-      Serial.println("Servo 11 moved to 180°");
+      // Move backward for 5 seconds
+      servo11.write(MIN_ANGLE); // Full speed backward
+      servo11Moving = true;
+      servo11Direction = -1;
+      servo11MoveStartTime = millis();
+      Serial.println("Servo 11 moving backward for 5 seconds.");
       break;
 
     // All Servos Control
@@ -357,6 +404,26 @@ void processCommand(String command) {
   }
 }
 
+// Function to send status as JSON
+void sendStatus(WiFiClient& client) {
+  // Prepare JSON data
+  String json = "{";
+  json += "\"pos9\":" + String(pos9) + ",";
+  json += "\"pos10\":" + String(pos10) + ",";
+  String servo11State = servo11Moving ? (servo11Direction == 1 ? "Moving Forward" : "Moving Backward") : "Stopped";
+  json += "\"servo11State\":\"" + servo11State + "\",";
+  json += "\"electro1\":\"" + String(pin13State == HIGH ? "On" : "Off") + "\",";
+  json += "\"electro2\":\"" + String(pin8State == HIGH ? "On" : "Off") + "\"";
+  json += "}";
+
+  // Send HTTP response
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  client.println(json);
+}
+
 // Function to URL-decode a percent-encoded string
 String urlDecode(String input) {
   String decoded = "";
@@ -379,13 +446,29 @@ String urlDecode(String input) {
 
 // Function to move all servos to a specific position
 void moveAllServos(int angle) {
-  // Move all servos
+  // Move servos 9 and 10
   servo9.write(angle);
   servo10.write(angle);
-  servo11.write(angle);
-
-  // Update current positions
   pos9 = angle;
   pos10 = angle;
-  pos11 = angle;
+
+  // For servo 11 (Axon Mini), handle appropriately
+  if (angle == MAX_ANGLE) {
+    // Open All - Start moving forward
+    servo11.write(MAX_ANGLE);
+    servo11Moving = true;
+    servo11Direction = 1;
+    servo11MoveStartTime = millis();
+  } else if (angle == MIN_ANGLE) {
+    // Close All - Start moving backward
+    servo11.write(MIN_ANGLE);
+    servo11Moving = true;
+    servo11Direction = -1;
+    servo11MoveStartTime = millis();
+  } else if (angle == CENTER_ANGLE) {
+    // Middle All - Stop servo 11
+    servo11.write(CENTER_ANGLE);
+    servo11Moving = false;
+    Serial.println("Servo 11 stopped.");
+  }
 }
