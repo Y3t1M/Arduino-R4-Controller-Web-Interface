@@ -1,8 +1,6 @@
 #include <WiFiS3.h>
 #include <Servo.h>
 
-#define JSON_BUFF_SIZE 256
-
 // Set the SSID and Password for the access point
 char ssid[] = "RVR_Network";    // Access point name
 char pass[] = "123456789";      // Password for WPA2
@@ -10,27 +8,41 @@ WiFiServer server(80);          // Create a server on port 80
 
 // Create servo objects
 Servo servo9;
-Servo servo10;
-Servo servo11;
+Servo servo10; // Axon Mini
+Servo servo11; // Axon Mini
 
 // Current positions of servos
 int pos9 = 90;
-int pos10 = 90;
-// Remove pos11 as it's no longer used for positioning
 
 // Define angle constants
-const int MIN_ANGLE = 0;
-const int CENTER_ANGLE = 90;
 const int MAX_ANGLE = 180;
+const int MIN_ANGLE = 0;
+
+// Define angle constants for Servo 10 (Axon Mini)
+const int SERVO10_DOWN_SPEED = 170; // Adjust as needed
+const int SERVO10_UP_SPEED = 10;    // Adjust as needed
+const int SERVO10_STOP_ANGLE = 90;  // Adjust as needed
+
+// Define angle constants for Servo 11 (Axon Mini)
+const int SERVO11_DOWN_SPEED = 170; // Adjust as needed
+const int SERVO11_UP_SPEED = 10;    // Adjust as needed
+const int SERVO11_STOP_ANGLE = 90;  // Adjust as needed
 
 // States of pin 13 and pin 8
 int pin13State = LOW; // Electromagnet 1 (Pin 13)
 int pin8State = LOW;  // Electromagnet 2 (Pin 8)
 
+// Variables for Servo 10 movement
+bool servo10Moving = false;
+unsigned long servo10MoveStartTime = 0;
+unsigned long servo10MoveDuration = 3000; // Default duration in ms
+int servo10Direction = 0; // 1 for down, -1 for up
+
 // Variables for Servo 11 movement
 bool servo11Moving = false;
 unsigned long servo11MoveStartTime = 0;
-int servo11Direction = 0; // 1 for forward, -1 for backward
+unsigned long servo11MoveDuration = 3000; // Default duration in ms
+int servo11Direction = 0; // 1 for down, -1 for up
 
 void setup() {
   // Initialize serial communication
@@ -46,8 +58,8 @@ void setup() {
 
   // Set initial positions
   servo9.write(pos9);
-  servo10.write(pos10);
-  servo11.write(CENTER_ANGLE); // Stop position for continuous rotation servo
+  servo10.write(SERVO10_STOP_ANGLE); // Stop position
+  servo11.write(SERVO11_STOP_ANGLE); // Stop position
 
   // Set up pins as outputs for electromagnets
   pinMode(13, OUTPUT);
@@ -84,11 +96,25 @@ void setup() {
 }
 
 void loop() {
+  // Handle Servo 10 movement timing
+  if (servo10Moving) {
+    unsigned long currentTime = millis();
+    unsigned long elapsedTime = currentTime - servo10MoveStartTime;
+    if (elapsedTime >= servo10MoveDuration) {
+      // Stop Servo 10 after specified duration
+      servo10.write(SERVO10_STOP_ANGLE); // Stop position
+      servo10Moving = false;
+      Serial.println("Servo 10 movement completed.");
+    }
+  }
+
   // Handle Servo 11 movement timing
   if (servo11Moving) {
-    if (millis() - servo11MoveStartTime >= 5000) {
-      // Stop Servo 11 after 5 seconds
-      servo11.write(CENTER_ANGLE); // Stop position
+    unsigned long currentTime = millis();
+    unsigned long elapsedTime = currentTime - servo11MoveStartTime;
+    if (elapsedTime >= servo11MoveDuration) {
+      // Stop Servo 11 after specified duration
+      servo11.write(SERVO11_STOP_ANGLE); // Stop position
       servo11Moving = false;
       Serial.println("Servo 11 movement completed.");
     }
@@ -213,7 +239,7 @@ void servePage(WiFiClient& client) {
   client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
   client.println("      var status = JSON.parse(xhr.responseText);");
   client.println("      document.getElementById('servo9Status').innerHTML = status.pos9 + '&deg;';");
-  client.println("      document.getElementById('servo10Status').innerHTML = status.pos10 + '&deg;';");
+  client.println("      document.getElementById('servo10Status').innerHTML = status.servo10State;");
   client.println("      document.getElementById('servo11Status').innerHTML = status.servo11State;");
   client.println("      document.getElementById('electro1Status').innerHTML = status.electro1;");
   client.println("      document.getElementById('electro2Status').innerHTML = status.electro2;");
@@ -235,8 +261,10 @@ void servePage(WiFiClient& client) {
   client.println("<p>Single-Key Commands:</p>");
   client.println("<ul>");
   client.println("<li><strong>Servo 9:</strong> 'q' (0&deg;), 'w' (90&deg;), 'e' (180&deg;)</li>");
-  client.println("<li><strong>Servo 10:</strong> 'a' (0&deg;), 's' (90&deg;), 'd' (180&deg;)</li>");
-  client.println("<li><strong>Servo 11 (Axon Mini):</strong> 'z' (Forward 5s), 'x' (Backward 5s)</li>");
+  client.println("<li><strong>Servo 10 (Axon Mini):</strong>");
+  client.println("'a' (Down 3s), 'b' (Down 1s), 'c' (Down 0.5s), 'd' (Up 3s), 'n' (Up 1s), 'f' (Up 0.5s)</li>");
+  client.println("<li><strong>Servo 11 (Axon Mini):</strong>");
+  client.println("'g' (Down 3s), 'h' (Down 1s), 'i' (Down 0.5s), 'j' (Up 3s), 'k' (Up 1s), 'l' (Up 0.5s)</li>");
   client.println("<li><strong>All Servos:</strong> 'o' (Open All), 'm' (Middle All), 'p' (Close All)</li>");
   client.println("<li><strong>Electromagnet 1:</strong> '1' (On), '2' (Off)</li>");
   client.println("<li><strong>Electromagnet 2:</strong> '3' (On), '4' (Off)</li>");
@@ -252,23 +280,34 @@ void servePage(WiFiClient& client) {
   client.println("<h2>Button Controls</h2>");
   // Servo 9 buttons
   client.println("<h3>Servo 9</h3>");
-  client.println("<button onclick=\"sendCommandFromButton('q')\">Close (0&deg;)</button>");
-  client.println("<button onclick=\"sendCommandFromButton('w')\">Middle (90&deg;)</button>");
-  client.println("<button onclick=\"sendCommandFromButton('e')\">Open (180&deg;)</button>");
-  // Servo 10 buttons
-  client.println("<h3>Servo 10</h3>");
-  client.println("<button onclick=\"sendCommandFromButton('a')\">Close (0&deg;)</button>");
-  client.println("<button onclick=\"sendCommandFromButton('s')\">Middle (90&deg;)</button>");
-  client.println("<button onclick=\"sendCommandFromButton('d')\">Open (180&deg;)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('q')\">Position 0&deg;</button>");
+  client.println("<button onclick=\"sendCommandFromButton('w')\">Position 90&deg;</button>");
+  client.println("<button onclick=\"sendCommandFromButton('e')\">Position 180&deg;</button>");
+  // Servo 10 buttons (Axon Mini)
+  client.println("<h3>Servo 10 (Axon Mini)</h3>");
+  client.println("<p>Down:</p>");
+  client.println("<button onclick=\"sendCommandFromButton('a')\">Down (3s)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('b')\">Down (1s)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('c')\">Down (0.5s)</button>");
+  client.println("<p>Up:</p>");
+  client.println("<button onclick=\"sendCommandFromButton('d')\">Up (3s)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('n')\">Up (1s)</button>"); // Updated command
+  client.println("<button onclick=\"sendCommandFromButton('f')\">Up (0.5s)</button>");
   // Servo 11 buttons (Axon Mini)
   client.println("<h3>Servo 11 (Axon Mini)</h3>");
-  client.println("<button onclick=\"sendCommandFromButton('z')\">Forward (5s)</button>");
-  client.println("<button onclick=\"sendCommandFromButton('x')\">Backward (5s)</button>");
+  client.println("<p>Down:</p>");
+  client.println("<button onclick=\"sendCommandFromButton('g')\">Down (3s)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('h')\">Down (1s)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('i')\">Down (0.5s)</button>");
+  client.println("<p>Up:</p>");
+  client.println("<button onclick=\"sendCommandFromButton('j')\">Up (3s)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('k')\">Up (1s)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('l')\">Up (0.5s)</button>");
   // All Servos Control
   client.println("<h3>All Servos</h3>");
-  client.println("<button onclick=\"sendCommandFromButton('o')\">Open All Servos (180&deg;)</button>");
-  client.println("<button onclick=\"sendCommandFromButton('m')\">Middle All Servos (90&deg;)</button>");
-  client.println("<button onclick=\"sendCommandFromButton('p')\">Close All Servos (0&deg;)</button>");
+  client.println("<button onclick=\"sendCommandFromButton('o')\">Open All Servos</button>");
+  client.println("<button onclick=\"sendCommandFromButton('m')\">Middle All Servos</button>");
+  client.println("<button onclick=\"sendCommandFromButton('p')\">Close All Servos</button>");
   // Electromagnet 1 buttons
   client.println("<h3>Electromagnet 1</h3>");
   client.println("<button onclick=\"sendCommandFromButton('1')\">Turn On</button>");
@@ -283,7 +322,7 @@ void servePage(WiFiClient& client) {
   client.println("<div class='panel panel-half'>");
   client.println("<h2>Current Status</h2>");
   client.println("<p><strong>Servo 9 Position:</strong> <span id='servo9Status'>Loading...</span></p>");
-  client.println("<p><strong>Servo 10 Position:</strong> <span id='servo10Status'>Loading...</span></p>");
+  client.println("<p><strong>Servo 10 State:</strong> <span id='servo10Status'>Loading...</span></p>");
   client.println("<p><strong>Servo 11 State:</strong> <span id='servo11Status'>Loading...</span></p>");
   client.println("<p><strong>Electromagnet 1 State:</strong> <span id='electro1Status'>Loading...</span></p>");
   client.println("<p><strong>Electromagnet 2 State:</strong> <span id='electro2Status'>Loading...</span></p>");
@@ -315,8 +354,8 @@ void processCommand(String command) {
       Serial.println("Servo 9 moved to 0°");
       break;
     case 'w':
-      servo9.write(CENTER_ANGLE);
-      pos9 = CENTER_ANGLE;
+      servo9.write(90);
+      pos9 = 90;
       Serial.println("Servo 9 moved to 90°");
       break;
     case 'e':
@@ -325,53 +364,58 @@ void processCommand(String command) {
       Serial.println("Servo 9 moved to 180°");
       break;
 
-    // Servo 10 Control
-    case 'a':
-      servo10.write(MIN_ANGLE);
-      pos10 = MIN_ANGLE;
-      Serial.println("Servo 10 moved to 0°");
+    // Servo 10 Control (Axon Mini)
+    case 'a': // Down 3s
+      startServo10Movement(SERVO10_DOWN_SPEED, 3000, 1);
       break;
-    case 's':
-      servo10.write(CENTER_ANGLE);
-      pos10 = CENTER_ANGLE;
-      Serial.println("Servo 10 moved to 90°");
+    case 'b': // Down 1s
+      startServo10Movement(SERVO10_DOWN_SPEED, 1000, 1);
       break;
-    case 'd':
-      servo10.write(MAX_ANGLE);
-      pos10 = MAX_ANGLE;
-      Serial.println("Servo 10 moved to 180°");
+    case 'c': // Down 0.5s
+      startServo10Movement(SERVO10_DOWN_SPEED, 500, 1);
+      break;
+    case 'd': // Up 3s
+      startServo10Movement(SERVO10_UP_SPEED, 3000, -1);
+      break;
+    case 'n': // Up 1s (changed from 'e' to 'n')
+      startServo10Movement(SERVO10_UP_SPEED, 1000, -1);
+      break;
+    case 'f': // Up 0.5s
+      startServo10Movement(SERVO10_UP_SPEED, 500, -1);
       break;
 
     // Servo 11 Control (Axon Mini)
-    case 'z':
-      // Move forward for 5 seconds
-      servo11.write(MAX_ANGLE); // Full speed forward
-      servo11Moving = true;
-      servo11Direction = 1;
-      servo11MoveStartTime = millis();
-      Serial.println("Servo 11 moving forward for 5 seconds.");
+    case 'g': // Down 3s
+      startServo11Movement(SERVO11_DOWN_SPEED, 3000, 1);
       break;
-    case 'x':
-      // Move backward for 5 seconds
-      servo11.write(MIN_ANGLE); // Full speed backward
-      servo11Moving = true;
-      servo11Direction = -1;
-      servo11MoveStartTime = millis();
-      Serial.println("Servo 11 moving backward for 5 seconds.");
+    case 'h': // Down 1s
+      startServo11Movement(SERVO11_DOWN_SPEED, 1000, 1);
+      break;
+    case 'i': // Down 0.5s
+      startServo11Movement(SERVO11_DOWN_SPEED, 500, 1);
+      break;
+    case 'j': // Up 3s
+      startServo11Movement(SERVO11_UP_SPEED, 3000, -1);
+      break;
+    case 'k': // Up 1s
+      startServo11Movement(SERVO11_UP_SPEED, 1000, -1);
+      break;
+    case 'l': // Up 0.5s
+      startServo11Movement(SERVO11_UP_SPEED, 500, -1);
       break;
 
     // All Servos Control
     case 'o': // Open All
       moveAllServos(MAX_ANGLE);
-      Serial.println("All servos moved to 180°");
+      Serial.println("All servos set to open.");
       break;
     case 'm': // Middle All
-      moveAllServos(CENTER_ANGLE);
-      Serial.println("All servos moved to 90°");
+      moveAllServos(90);
+      Serial.println("All servos set to middle position.");
       break;
     case 'p': // Close All
       moveAllServos(MIN_ANGLE);
-      Serial.println("All servos moved to 0°");
+      Serial.println("All servos set to close.");
       break;
 
     // Electromagnet 1 (Pin 13)
@@ -404,13 +448,44 @@ void processCommand(String command) {
   }
 }
 
+// Helper function to start Servo 10 movement
+void startServo10Movement(int speed, unsigned long duration, int direction) {
+  servo10.write(speed);
+  servo10Moving = true;
+  servo10Direction = direction;
+  servo10MoveStartTime = millis();
+  servo10MoveDuration = duration;
+  Serial.print("Servo 10 moving ");
+  Serial.print(direction == 1 ? "down" : "up");
+  Serial.print(" for ");
+  Serial.print(duration);
+  Serial.println(" ms.");
+}
+
+// Helper function to start Servo 11 movement
+void startServo11Movement(int speed, unsigned long duration, int direction) {
+  servo11.write(speed);
+  servo11Moving = true;
+  servo11Direction = direction;
+  servo11MoveStartTime = millis();
+  servo11MoveDuration = duration;
+  Serial.print("Servo 11 moving ");
+  Serial.print(direction == 1 ? "down" : "up");
+  Serial.print(" for ");
+  Serial.print(duration);
+  Serial.println(" ms.");
+}
+
 // Function to send status as JSON
 void sendStatus(WiFiClient& client) {
   // Prepare JSON data
   String json = "{";
   json += "\"pos9\":" + String(pos9) + ",";
-  json += "\"pos10\":" + String(pos10) + ",";
-  String servo11State = servo11Moving ? (servo11Direction == 1 ? "Moving Forward" : "Moving Backward") : "Stopped";
+  // Servo 10 state
+  String servo10State = servo10Moving ? (servo10Direction == 1 ? "Moving Down" : "Moving Up") : "Stopped";
+  json += "\"servo10State\":\"" + servo10State + "\",";
+  // Servo 11 state
+  String servo11State = servo11Moving ? (servo11Direction == 1 ? "Moving Down" : "Moving Up") : "Stopped";
   json += "\"servo11State\":\"" + servo11State + "\",";
   json += "\"electro1\":\"" + String(pin13State == HIGH ? "On" : "Off") + "\",";
   json += "\"electro2\":\"" + String(pin8State == HIGH ? "On" : "Off") + "\"";
@@ -446,29 +521,25 @@ String urlDecode(String input) {
 
 // Function to move all servos to a specific position
 void moveAllServos(int angle) {
-  // Move servos 9 and 10
+  // Move servo 9
   servo9.write(angle);
-  servo10.write(angle);
   pos9 = angle;
-  pos10 = angle;
 
-  // For servo 11 (Axon Mini), handle appropriately
+  // For servos 10 and 11 (Axon Minis), handle appropriately
   if (angle == MAX_ANGLE) {
-    // Open All - Start moving forward
-    servo11.write(MAX_ANGLE);
-    servo11Moving = true;
-    servo11Direction = 1;
-    servo11MoveStartTime = millis();
+    // Open All - Start moving down for 3 seconds
+    startServo10Movement(SERVO10_DOWN_SPEED, 3000, 1);
+    startServo11Movement(SERVO11_DOWN_SPEED, 3000, 1);
   } else if (angle == MIN_ANGLE) {
-    // Close All - Start moving backward
-    servo11.write(MIN_ANGLE);
-    servo11Moving = true;
-    servo11Direction = -1;
-    servo11MoveStartTime = millis();
-  } else if (angle == CENTER_ANGLE) {
-    // Middle All - Stop servo 11
-    servo11.write(CENTER_ANGLE);
+    // Close All - Start moving up for 3 seconds
+    startServo10Movement(SERVO10_UP_SPEED, 3000, -1);
+    startServo11Movement(SERVO11_UP_SPEED, 3000, -1);
+  } else if (angle == 90) {
+    // Middle All - Stop servos 10 and 11
+    servo10.write(SERVO10_STOP_ANGLE);
+    servo10Moving = false;
+    servo11.write(SERVO11_STOP_ANGLE);
     servo11Moving = false;
-    Serial.println("Servo 11 stopped.");
+    Serial.println("Servos 10 and 11 stopped.");
   }
 }
